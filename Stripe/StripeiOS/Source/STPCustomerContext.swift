@@ -9,6 +9,10 @@
 import Foundation
 @_spi(STP) import StripeCore
 
+public protocol STPCustomerContextDelegate: class {
+    func paymentMethodWasDetached(_ paymentMethodId: String, contex: STPCustomerContext)
+}
+
 /// An `STPCustomerContext` retrieves and updates a Stripe customer and their attached
 /// payment methods using an ephemeral key, a short-lived API key scoped to a specific
 /// customer object. If your current user logs out of your app and a new user logs in,
@@ -82,6 +86,8 @@ open class STPCustomerContext: NSObject, STPBackendAPIAdapter {
             customer?.updateSources(filteringApplePay: !includeApplePayMethods)
         }
     }
+    
+    public weak var delegate: STPCustomerContextDelegate?
 
     private var _customer: STPCustomer?
     private var customer: STPCustomer? {
@@ -296,9 +302,13 @@ open class STPCustomerContext: NSObject, STPBackendAPIAdapter {
                 fromCustomerUsing: ephemeralKey
             ) { error in
                 self.clearCachedPaymentMethods()
+                
                 if let completion = completion {
-                    stpDispatchToMainThreadIfNecessary({
+                    stpDispatchToMainThreadIfNecessary({ [weak self] in
                         completion(error)
+                        if error == nil, let self = self {
+                            self.delegate?.paymentMethodWasDetached(paymentMethodId, contex: self)
+                        }
                     })
                 }
             }
